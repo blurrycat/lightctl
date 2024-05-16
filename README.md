@@ -52,6 +52,8 @@ Install the binary directly through cargo:
 cargo install --git https://github.com/blurrycat/lightctl
 ```
 
+Alternatively, you can grab a pre-built binary from the [releases](https://github.com/blurrycat/lightctl/releases) page, and place it somewhere in your `$PATH`.
+
 ## Building
 
 Pre-requisites:
