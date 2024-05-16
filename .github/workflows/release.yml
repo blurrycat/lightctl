@@ -1,0 +1,134 @@
+name: release
+
+env:
+  CICD_INTERMEDIATES_DIR: "_cicd-intermediates"
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build release binaries for"
+        required: true
+        type: string
+  push:
+    tags:
+      - "v*"
+
+  release:
+    types: [created]
+
+jobs:
+  build:
+    name: ${{ matrix.job.os }} (${{ matrix.job.target }})
+    runs-on: ${{ matrix.job.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        job:
+          - { os: ubuntu-20.04, target: x86_64-unknown-linux-musl }
+          - { os: ubuntu-20.04, target: x86_64-unknown-linux-gnu }
+          - { os: ubuntu-20.04, target: aarch64-unknown-linux-gnu }
+    steps:
+      - name: Check for release
+        id: is-release
+        shell: bash
+        run: |
+          unset IS_RELEASE ; if [[ $GITHUB_REF =~ ^refs/tags/v[0-9].* ]]; then IS_RELEASE='true' ; fi
+          echo "IS_RELEASE=${IS_RELEASE}" >> $GITHUB_OUTPUT
+
+      - name: Checkout source code
+        if: steps.is-release.outputs.IS_RELEASE
+        uses: actions/checkout@v4
+
+      - name: Checkout source code
+        if: ${{ !steps.is-release.outputs.IS_RELEASE }}
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+
+      - name: Install prerequisites
+        shell: bash
+        run: |
+          case ${{ matrix.job.target }} in
+            aarch64-unknown-linux-gnu) sudo apt-get -y update ; sudo apt-get -y install gcc-aarch64-linux-gnu qemu-user;;
+            x86_64-unknown-linux-musl) sudo apt-get -y update ; sudo apt-get -y install musl-tools ;;
+          esac
+
+      - name: Extract crate information
+        shell: bash
+        run: |
+          echo "PROJECT_NAME=$(sed -n 's/^name = "\(.*\)"/\1/p' Cargo.toml)" >> $GITHUB_ENV
+          echo "PROJECT_VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n1)" >> $GITHUB_ENV
+          echo "PROJECT_MAINTAINER=$(sed -n 's/^authors = \["\(.*\)"\]/\1/p' Cargo.toml)" >> $GITHUB_ENV
+          echo "PROJECT_HOMEPAGE=$(sed -n 's/^homepage = "\(.*\)"/\1/p' Cargo.toml)" >> $GITHUB_ENV
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+          targets: ${{ matrix.job.target }}
+          override: true
+          profile: minimal # minimal component installation (ie, no documentation)
+
+      - name: Show version information (Rust, cargo, GCC)
+        shell: bash
+        run: |
+          gcc --version || true
+          rustup -V
+          rustup toolchain list
+          rustup default
+          cargo -V
+          rustc -V
+
+      - name: Build
+        run: |
+          case ${{ matrix.job.target }} in
+            aarch64-unknown-linux-gnu) export RUSTFLAGS="-C linker=aarch64-linux-gnu-gcc";;
+          esac;
+          cargo build --locked --release --target=${{ matrix.job.target }}
+
+      - name: Strip debug information from executable
+        id: strip
+        shell: bash
+        run: |
+          # Figure out what strip tool to use if any
+          # musl builds use the default strip
+          STRIP="strip"
+          case ${{ matrix.job.target }} in
+            aarch64-unknown-linux-gnu) STRIP="aarch64-linux-gnu-strip" ;;
+          esac;
+
+          # Setup paths
+          BIN_DIR="${{ env.CICD_INTERMEDIATES_DIR }}/stripped-release-bin/"
+          mkdir -p "${BIN_DIR}"
+          BIN_NAME="${{ env.PROJECT_NAME }}"
+          BIN_ARCH_NAME="${BIN_NAME}-${{ matrix.job.target }}"
+          BIN_PATH="${BIN_DIR}${BIN_ARCH_NAME}"
+
+          # Copy the release build binary to the result location
+          cp "target/${{ matrix.job.target }}/release/${BIN_NAME}" "${BIN_DIR}${BIN_ARCH_NAME}"
+
+          # Also strip if possible
+          if [ -n "${STRIP}" ]; then
+            "${STRIP}" "${BIN_PATH}"
+          fi
+
+          # Let subsequent steps know where to find the (stripped) bin
+          echo "BIN_PATH=${BIN_PATH}" >> "$GITHUB_OUTPUT"
+          echo "BIN_NAME=${BIN_NAME}" >> "$GITHUB_OUTPUT"
+          echo "BIN_ARCH_NAME=${BIN_ARCH_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: "Artifact upload"
+        uses: actions/upload-artifact@master
+        with:
+          name: ${{ steps.strip.outputs.BIN_ARCH_NAME }}
+          path: ${{ steps.strip.outputs.BIN_PATH }}
+
+      - name: Publish archives and packages
+        uses: softprops/action-gh-release@v1
+        if: steps.is-release.outputs.IS_RELEASE
+        with:
+          files: |
+            ${{ steps.strip.outputs.BIN_PATH }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
