@@ -1,3 +1,4 @@
+# Adapted from https://github.com/atuinsh/atuin/blob/2e35af1c86dc3ddb02dbababf909c7f5248368c3/.github/workflows/rust.yml
 name: release
 
 env:
