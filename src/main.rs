@@ -6,6 +6,7 @@ use device::Device;
 use enumerator::Enumerator;
 use value::BrightnessValue;
 
+mod dbus;
 mod device;
 mod enumerator;
 mod util;
