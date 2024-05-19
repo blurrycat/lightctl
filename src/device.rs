@@ -1,10 +1,9 @@
 use std::fmt::Display;
 
-use anyhow::Result;
-use logind_zbus::session::SessionProxyBlocking;
+use anyhow::{Context, Result};
 use zbus::blocking::Connection;
 
-use crate::util::read_u32_from_file;
+use crate::{dbus::SessionProxy, util::read_u32_from_file};
 
 #[derive(Clone)]
 pub enum Class {
@@ -49,12 +48,9 @@ impl Device {
     }
 
     pub fn set_brightness(&self, value: u32) -> Result<()> {
-        let connection = Connection::system()?;
-        let session = SessionProxyBlocking::builder(&connection)
-            .destination("org.freedesktop.login1")?
-            .path("/org/freedesktop/login1/session/auto")?
-            .interface("org.freedesktop.login1.Session")?
-            .build()?;
+        let connection = Connection::system().context("Could not connect to system D-Bus")?;
+        let session = SessionProxy::new(&connection)
+            .context("Could not initialize proxy to D-Bus service")?;
 
         let name = self.real_name.as_ref().unwrap_or(&self.name);
 
