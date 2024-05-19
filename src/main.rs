@@ -95,33 +95,12 @@ fn main() -> Result<()> {
         },
         Some(Commands::Set { value }) => {
             let value: BrightnessValue = value.parse()?;
-            let value = match value {
-                BrightnessValue::Absolute(value) => {
-                    let max = args.device.max_brightness()?;
-                    value.min(max).max(0)
-                }
-                BrightnessValue::Relative(value) => {
-                    let current = args.device.brightness()?;
-                    let max = args.device.max_brightness()?;
-                    let new = (current as i32 + value) as u32;
 
-                    new.min(max).max(0)
-                }
-                BrightnessValue::Percent(value) => {
-                    let max = args.device.max_brightness()?;
-                    let new = (value as f64 / 100.0 * max as f64) as u32;
+            let current = args.device.brightness()?;
+            let max = args.device.max_brightness()?;
+            let new = value.calculate(current, max);
 
-                    new.min(max).max(0)
-                }
-                BrightnessValue::RelativePercent(value) => {
-                    let current = args.device.brightness()?;
-                    let max = args.device.max_brightness()?;
-                    let new = (current as i32 + (value as f64 / 100.0 * max as f64) as i32) as u32;
-
-                    new.min(max).max(0)
-                }
-            };
-            args.device.set_brightness(value)?;
+            args.device.set_brightness(new)?;
         }
         Some(Commands::Toggle) => {
             let current = args.device.brightness()?;
