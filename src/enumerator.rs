@@ -166,3 +166,30 @@ impl Enumerator {
         self.backlights.values().chain(self.leds.values()).collect()
     }
 }
+
+pub fn parse_device(device: &str) -> Result<Device> {
+    let (class, name) = if device.contains('/') {
+        let (class, name) = device.split_once('/').context("Invalid device name")?;
+        (class, name)
+    } else {
+        ("backlight", device)
+    };
+
+    if name == "auto" {
+        if class != "backlight" {
+            anyhow::bail!("Invalid device name 'auto' for class '{class}'");
+        }
+
+        let mut enumerator = Enumerator::new();
+        enumerator.scan()?;
+        enumerator
+            .get_default_device()
+            .context("Failed to get default device")
+    } else {
+        let mut enumerator = Enumerator::new();
+        enumerator.scan()?;
+        enumerator
+            .get_named_device(device)
+            .context("Failed to get named device")
+    }
+}
