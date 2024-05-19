@@ -2,6 +2,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use colored::Colorize;
 
+use device::Device;
 use enumerator::Enumerator;
 use value::BrightnessValue;
 
@@ -12,8 +13,15 @@ mod value;
 
 #[derive(Parser)]
 struct Cli {
-    #[clap(short, long)]
-    device: Option<String>,
+    // #[clap(short, long)]
+    // device: Option<String>,
+    #[clap(
+        short,
+        long,
+        value_parser = enumerator::parse_device,
+        default_value = "backlight/auto"
+    )]
+    device: Device,
     #[clap(subcommand)]
     command: Option<Commands>,
 }
@@ -60,15 +68,10 @@ enum Commands {
 
 fn main() -> Result<()> {
     let args = Cli::parse();
-    let mut enumerator = Enumerator::new();
-
-    let device = match args.device {
-        Some(device) => enumerator.get_named_device(&device)?,
-        None => enumerator.get_default_device()?,
-    };
 
     match args.command {
         Some(Commands::List) => {
+            let mut enumerator = Enumerator::new();
             enumerator.scan()?;
             println!("{}", "Available devices:".bold());
             for dev in enumerator.list() {
@@ -77,14 +80,15 @@ fn main() -> Result<()> {
         }
         Some(Commands::Query { param }) => match param {
             None | Some(GetParam::Brightness) => {
-                let brightness = device.brightness()?;
+                let brightness = args.device.brightness()?;
                 println!("{}", brightness);
             }
             Some(GetParam::MaxBrightness) => {
-                let max_brightness = device.max_brightness()?;
+                let max_brightness = args.device.max_brightness()?;
                 println!("{}", max_brightness);
             }
             Some(GetParam::DefaultDevice) => {
+                let enumerator = Enumerator::new();
                 let default_device = enumerator.get_default_device()?;
                 println!("{}", default_device);
             }
@@ -93,53 +97,53 @@ fn main() -> Result<()> {
             let value: BrightnessValue = value.parse()?;
             let value = match value {
                 BrightnessValue::Absolute(value) => {
-                    let max = device.max_brightness()?;
+                    let max = args.device.max_brightness()?;
                     value.min(max).max(0)
                 }
                 BrightnessValue::Relative(value) => {
-                    let current = device.brightness()?;
-                    let max = device.max_brightness()?;
+                    let current = args.device.brightness()?;
+                    let max = args.device.max_brightness()?;
                     let new = (current as i32 + value) as u32;
 
                     new.min(max).max(0)
                 }
                 BrightnessValue::Percent(value) => {
-                    let max = device.max_brightness()?;
+                    let max = args.device.max_brightness()?;
                     let new = (value as f64 / 100.0 * max as f64) as u32;
 
                     new.min(max).max(0)
                 }
                 BrightnessValue::RelativePercent(value) => {
-                    let current = device.brightness()?;
-                    let max = device.max_brightness()?;
+                    let current = args.device.brightness()?;
+                    let max = args.device.max_brightness()?;
                     let new = (current as i32 + (value as f64 / 100.0 * max as f64) as i32) as u32;
 
                     new.min(max).max(0)
                 }
             };
-            device.set_brightness(value)?;
+            args.device.set_brightness(value)?;
         }
         Some(Commands::Toggle) => {
-            let current = device.brightness()?;
-            let max = device.max_brightness()?;
+            let current = args.device.brightness()?;
+            let max = args.device.max_brightness()?;
             // let new = (current + max).min(max).max(0) - current;
             let new = if current != max { max } else { 0 };
-            device.set_brightness(new)?;
+            args.device.set_brightness(new)?;
         }
         None | Some(Commands::Status) => {
-            let current = device.brightness()?;
-            let max = device.max_brightness()?;
+            let current = args.device.brightness()?;
+            let max = args.device.max_brightness()?;
             let percentage = format!("{:.2}%", current as f64 / max as f64 * 100.0);
 
             println!("{}", "Device status".bold());
-            if device.name.as_str() == "auto" {
+            if args.device.name.as_str() == "auto" {
                 println!(
                     "Device: {} ({})",
-                    device.to_string().green(),
-                    device.real_name.as_ref().unwrap().green()
+                    args.device.to_string().green(),
+                    args.device.real_name.as_ref().unwrap().green()
                 );
             } else {
-                println!("Device: {}", device.to_string().green());
+                println!("Device: {}", args.device.to_string().green());
             }
             println!(
                 "Current brightness: {} ({})",
