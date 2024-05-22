@@ -10,4 +10,4 @@ repository = "https://github.com/blurrycat/lightctl"
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 colored = "2"
-zbus = "4"
+rustbus = "0.19"

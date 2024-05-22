@@ -1,9 +1,8 @@
 use std::fmt::Display;
 
-use anyhow::{Context, Result};
-use zbus::blocking::Connection;
+use anyhow::Result;
 
-use crate::{dbus::SessionProxy, util::read_u32_from_file};
+use crate::{dbus, util::read_u32_from_file};
 
 #[derive(Clone)]
 pub enum Class {
@@ -48,13 +47,9 @@ impl Device {
     }
 
     pub fn set_brightness(&self, value: u32) -> Result<()> {
-        let connection = Connection::system().context("Could not connect to system D-Bus")?;
-        let session = SessionProxy::new(&connection)
-            .context("Could not initialize proxy to D-Bus service")?;
-
         let name = self.real_name.as_ref().unwrap_or(&self.name);
 
-        session.set_brightness(&self.class.to_string(), name, value)?;
+        dbus::set_brightness(&self.class.to_string(), name, value)?;
 
         Ok(())
     }
